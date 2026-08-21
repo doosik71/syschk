@@ -1,0 +1,13 @@
+Smart Log for NVME device:nvme0 namespace-id:ffffffff
+critical_warning			: 0
+temperature				: 39 °C (312 K)
+available_spare				: 100%
+available_spare_threshold		: 10%
+percentage_used				: 2%
+endurance group critical warning summary: 0
+data_units_read				: 145,678,901
+data_units_written			: 98,765,432
+host_read_commands			: 1,234,567,890
+media_errors				: 0
+num_err_log_entries			: 0
+unsafe_shutdowns			: 7

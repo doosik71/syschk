@@ -2,5 +2,6 @@
 pub mod home;
 pub mod live;
 pub mod slow;
+pub mod storage;
 pub mod task_list;
 pub mod tools;

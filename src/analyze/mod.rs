@@ -5,6 +5,8 @@
 
 pub mod bottleneck;
 pub mod rules;
+pub mod storage;
 
 pub use bottleneck::{Assessment, Axis, Metrics, assess};
 pub use rules::{Finding, Verdict};
+pub use storage::{FullCause, SpaceDiagnosis};

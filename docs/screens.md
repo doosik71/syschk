@@ -101,6 +101,47 @@ syschk 의 화면은 도구별 분류(로그 / 디스크 / 네트워크…)가 �
 └────────────────────────────────────┘└──────────────────────────────────────────────────────────────────┘
 ```
 
+
+## 저장 공간 화면 (4번)
+
+위쪽은 파일시스템 사용률(꽉 찬 것부터), 아래쪽은 선택한 항목의 상세다.
+
+```
+┌ 4. Storage - filesystems, fullest first ───────────────────────────────────────────────────────────────┐
+│  MOUNT                  TYPE         SIZE    AVAIL   USE%  USED          INODE%                        │
+│  /mnt/work              ext4         3.6T     1.5T    55%  ███████░░░░░   4.9%                         │
+│  /                      ext4         3.6T     2.0T    40%  █████░░░░░░░   1.2%                         │
+│  /mnt/data              ext4        19.9T    15.2T    20%  ██░░░░░░░░░░   0.6%                         │
+│  /boot/efi              vfat         511M     505M   1.2%  ░░░░░░░░░░░░      -                         │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Look at ───────────────────────────┐┌ Detail ──────────────────────────────────────────────────────────┐
+│   Which filesystem is full         ││/mnt/work   741G                                                  │
+│ › Find what is filling up the d…   ││1228454 files measured in 8.0s - stopped early, lower bounds       │
+│   I deleted files but the space…   ││                                                                  │
+│   There is free space but I get…   ││›     741G  doosik/                                    ██████████ │
+│   Are logs eating the space        ││      2.1G  cache/                                     ░░░░░░░░░░ │
+│   Is the drive failing             ││                                                                  │
+│   Are there disk error records     ││press c to see what syschk reads, and the commands you can run    │
+│   Show me how the disks are lai…   ││                                                                  │
+│   Is the filesystem healthy        ││                                                                  │
+└────────────────────────────────────┘└──────────────────────────────────────────────────────────────────┘
+ ↑↓ view   J/K row   ⏎ into   ⌫ up   r refresh   c commands   esc back
+```
+
+`INODE%` 열의 `-` 는 그 파일시스템에 고정된 inode 개수가 없다는 뜻이다(vfat, btrfs, XFS).
+0% 이 아니라 "해당 없음"이므로 값을 만들어 넣지 않는다.
+
+"Which filesystem is full" 은 사용률만 보여주지 않고 **왜 찼는지**를 좁혀 준다.
+다섯 후보 중에서 근거와 함께 고른다.
+
+| 후보 | 어떻게 판단하는가 |
+| --- | --- |
+| inode 고갈 | inode 사용률이 높은데 용량은 남아 있다 |
+| 지운 파일 점유 | 삭제됐지만 열려 있는 파일이 사용량의 5% 이상 |
+| 로그 | 로그가 사용량의 25% 이상 |
+| 큰 디렉터리 | 위 세 가지가 아니면 실제 파일이 쓰고 있다 |
+| root 예약 공간 | `available` 이 0 인데 `free` 는 남아 있다 |
+
 ## 표시 언어
 
 화면에 표시되는 문구는 **영어**로 통일한다. 프로젝트 초기 단계에서 다국어 지원 비용을 감당하기에는 이르다는 판단이다.
@@ -170,15 +211,15 @@ Separate 'space is used up' from 'the drive is failing'.
 
 | Menu item | What you get | Needs | Status |
 | --- | --- | --- | --- |
-| Which filesystem is full | Usage and free space per mount point, with the ones over threshold called out | `util-linux` | M2 |
-| Find what is filling up the disk | Largest directories, with drill-down into subdirectories | - | M2 |
-| I deleted files but the space did not come back | Files that are unlinked but still open, and the processes holding them | `lsof` | M2 |
-| There is free space but I get 'No space left' | Inode exhaustion, reserved blocks and quota limits - the three usual explanations | `util-linux`, `e2fsprogs` | M2 |
-| Are logs eating the space | Journal footprint, largest log directories and whether rotation is configured | `systemd` | M2 |
-| Is the drive failing | SMART health plus the attributes that actually predict failure, and NVMe wear and temperature | `smartmontools`, `nvme-cli` | M2 |
-| Are there disk error records | Storage-related kernel errors: link resets, I/O errors and filesystem errors | `systemd` | M2 |
-| Show me how the disks are laid out | Devices, partitions, filesystems and mounts as a tree, plus RAID and LVM state | `util-linux`, `lvm2`, `mdadm` | M2 |
-| Is the filesystem healthy | Mount options, read-only fallback, check-needed flags and superblock state | `e2fsprogs`, `util-linux` | M2 |
+| Which filesystem is full | Usage and free space per mount point, with the likely reason the fullest one filled up | - | ready |
+| Find what is filling up the disk | Largest directories, with drill-down into subdirectories | - | ready |
+| I deleted files but the space did not come back | Files that are unlinked but still open, and the processes holding them | - | ready |
+| There is free space but I get 'No space left' | Inode exhaustion, reserved blocks and quota limits - the three usual explanations | - | ready |
+| Are logs eating the space | Journal footprint, largest log directories and how much of the filesystem they take | `systemd` | ready |
+| Is the drive failing | The handful of self-diagnosis values that actually predict failure, with what each means | `smartmontools`, `nvme-cli` | ready |
+| Are there disk error records | Storage-related kernel errors: link resets, I/O errors and filesystem errors | `systemd` | ready |
+| Show me how the disks are laid out | Drives, partitions, filesystems and mounts as a tree, plus RAID state | - | ready |
+| Is the filesystem healthy | Mount options, read-only state, space reserved for root and recorded filesystem errors | - | ready |
 
 ### 5. Network is down or slow
 

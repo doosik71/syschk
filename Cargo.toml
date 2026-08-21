@@ -11,6 +11,8 @@ readme = "README.md"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+# 파일시스템 여유 용량과 inode 수는 커널이 /proc 로 노출하지 않는다. statvfs 한 함수만 쓴다.
+libc = "0.2"
 ratatui = "0.30"
 
 [profile.release]

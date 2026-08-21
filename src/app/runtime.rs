@@ -16,12 +16,14 @@ pub fn run() -> Result<()> {
 fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
     loop {
-        // 실시간 화면에서는 1초마다 표본을 뜬다. 다른 화면에서는 아무 것도 읽지 않는다.
+        // 실시간 화면에서는 정해진 간격으로 표본을 뜨고, 다른 화면에서는 아무 것도 읽지 않는다.
         app.maybe_sample();
+        // 배경 작업 결과를 받고, 이 화면에 필요한 수집을 시작한다.
+        app.poll_collectors();
         terminal.draw(|frame| crate::ui::draw(frame, &app))?;
 
-        // 실시간 화면이면 다음 표본 시각까지만 기다린다. 그 밖에는 입력만 기다린다.
-        let wait = if app.live_active() && !app.frozen {
+        // 갱신이 필요한 동안에는 짧게, 그 밖에는 입력만 기다린다.
+        let wait = if (app.live_active() && !app.frozen) || app.jobs.busy() {
             Duration::from_millis(250)
         } else {
             Duration::from_millis(1000)

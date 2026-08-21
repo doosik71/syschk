@@ -29,6 +29,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Screen::Home => screens::home::draw(frame, body, app, th),
         Screen::Live => screens::live::draw(frame, body, app, th),
         Screen::Slow => screens::slow::draw(frame, body, app, th),
+        Screen::Storage => screens::storage::draw(frame, body, app, th),
         Screen::Tools => screens::tools::draw(frame, body, app, th),
         _ => screens::task_list::draw(frame, body, app, th),
     }
@@ -107,6 +108,16 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App, th: Theme) {
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App, th: Theme) {
     let hints: &[(&str, &str)] = if app.overlay.is_some() {
         &[("esc", "close"), ("↑↓", "move"), ("⏎", "open")]
+    } else if app.screen == Screen::Storage {
+        &[
+            ("↑↓", "view"),
+            ("J/K", "row"),
+            ("⏎", "into"),
+            ("⌫", "up"),
+            ("r", "refresh"),
+            ("c", "commands"),
+            ("esc", "back"),
+        ]
     } else if matches!(app.screen, Screen::Live | Screen::Slow) {
         &[
             ("↑↓", "view"),

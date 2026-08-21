@@ -1,0 +1,9 @@
+Smart Log for NVME device:nvme1 namespace-id:ffffffff
+critical_warning			: 4
+temperature				: 71 °C (344 K)
+available_spare				: 8%
+available_spare_threshold		: 10%
+percentage_used				: 103%
+media_errors				: 21
+num_err_log_entries			: 415
+unsafe_shutdowns			: 3

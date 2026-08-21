@@ -6,12 +6,20 @@
 //! 수집 실패는 예외가 아니라 [`Availability`] 의 한 상태다. 도구가 없거나 권한이 없거나
 //! 값이 신뢰할 수 없어도 앱은 계속 동작하고, 그 사실을 사용자에게 그대로 알린다.
 
+pub mod blockdev;
 pub mod blockio;
 pub mod cpu;
+pub mod deleted;
+pub mod dirsize;
+pub mod fsinfo;
+pub mod logspace;
 pub mod memory;
+pub mod mounts;
 pub mod network;
 pub mod pressure;
 pub mod process;
+pub mod smart;
+pub mod storage_errors;
 pub mod system;
 
 use crate::util::exec::CommandOutput;
@@ -19,9 +27,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// 수집 결과를 왜 쓸 수 없는지 — 또는 쓸 수 있는지.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Availability {
     /// 정상 수집.
+    #[default]
     Ok,
     /// 필요한 도구가 설치되어 있지 않다. 도구 안내로 연결된다.
     NotInstalled { tool: &'static str },
@@ -191,6 +200,12 @@ pub fn probes() -> Vec<Box<dyn Probe>> {
         Box::new(blockio::DiskIoProbe),
         Box::new(network::NetworkProbe),
         Box::new(process::ProcessProbe),
+        Box::new(mounts::MountProbe),
+        Box::new(blockdev::BlockDeviceProbe),
+        Box::new(deleted::DeletedFilesProbe),
+        Box::new(fsinfo::FsHealthProbe),
+        Box::new(logspace::LogSpaceProbe),
+        Box::new(storage_errors::StorageErrorProbe),
     ]
 }
 

@@ -4,10 +4,18 @@ mod common;
 
 use syschk::collect::{Availability, ProbeCtx, probes};
 
+/// 외부 도구를 실행하는 수집기는 픽스처로 시험할 수 없다(실제 시스템을 건드린다).
+fn uses_external_tools(probe: &dyn syschk::collect::Probe) -> bool {
+    !probe.required_tools().is_empty()
+}
+
 #[test]
 fn probes_parse_fixture_system() {
     let ctx = ProbeCtx::with_root(common::fixture_root());
     for probe in probes() {
+        if uses_external_tools(probe.as_ref()) {
+            continue;
+        }
         let result = probe.run(&ctx);
         assert!(
             result.availability.is_ok(),
@@ -42,6 +50,11 @@ fn probes_parse_fixture_system() {
                 assert_eq!(result.data.field("processes"), Some("2"));
                 assert_eq!(result.data.field("blocked"), Some("1"));
             }
+            // M2 수집기. 자세한 검증은 storage.rs 가 한다.
+            "storage.mounts" | "storage.layout" | "storage.fs-health" => {}
+            "storage.deleted" => {
+                assert_eq!(result.data.field("files"), Some("2"));
+            }
             other => panic!("unexpected probe id: {other}"),
         }
     }
@@ -52,12 +65,16 @@ fn probes_parse_fixture_system() {
 fn missing_sources_degrade_gracefully() {
     let ctx = ProbeCtx::with_root("/nonexistent-root-for-tests");
     for probe in probes() {
+        if uses_external_tools(probe.as_ref()) {
+            continue;
+        }
         let result = probe.run(&ctx);
         match probe.id() {
             // identity 는 값이 없어도 "unknown" 으로 채워 계속 진행한다.
             "system.identity" => assert!(result.availability.is_ok()),
-            // 프로세스 목록은 디렉터리를 열 수 없다는 사실을 알린다.
-            "process.list" | "disk.io" | "network.io" => assert!(
+            // 읽을 것이 없다는 사실을 알린다.
+            "process.list" | "disk.io" | "network.io" | "storage.mounts" | "storage.layout"
+            | "storage.fs-health" | "storage.deleted" => assert!(
                 matches!(result.availability, Availability::ParseFailed { .. }),
                 "probe {} should report why it could not read",
                 probe.id()

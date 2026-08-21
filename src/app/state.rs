@@ -3,7 +3,9 @@
 //! 상태 전이는 모두 이곳에 모여 있고, UI 는 상태를 읽어서 그리기만 한다.
 //! 덕분에 화면을 추가할 때 이벤트 루프를 건드릴 필요가 없다.
 
+use super::jobs::Jobs;
 use super::sampler::Sampler;
+use super::storage::StorageState;
 use crate::collect::process::ProcRow;
 use crate::collect::{ProbeCtx, ProbeData};
 use crate::tasks::{MENU, Screen, Task, registry, search};
@@ -62,9 +64,17 @@ pub struct Header {
 
 impl Header {
     /// `/proc` 기반 수집기로 채운다. 실패해도 빈 값으로 남기고 계속한다.
+    ///
+    /// 필요한 세 개만 골라 돌린다. 전체 수집기를 돌리면 시작할 때 디스크와 로그까지
+    /// 뒤지게 되어 앱이 뜨는 데만 몇 초가 걸린다.
     pub fn collect(ctx: &ProbeCtx) -> Self {
         let mut h = Header::default();
-        for probe in crate::collect::probes() {
+        let probes: Vec<Box<dyn crate::collect::Probe>> = vec![
+            Box::new(crate::collect::system::Identity),
+            Box::new(crate::collect::system::Uptime),
+            Box::new(crate::collect::system::LoadAverage),
+        ];
+        for probe in probes {
             let result = probe.run(ctx);
             if !result.availability.is_ok() {
                 continue;
@@ -114,8 +124,14 @@ pub struct App {
     pub frozen: bool,
     /// 고정 관찰 중인 프로세스.
     pub pinned: Option<u32>,
-    /// 프로세스 표 안의 커서.
+    /// 프로세스·표 안의 커서.
     pub row_cursor: usize,
+    /// 저장 공간 화면의 자료.
+    pub storage: StorageState,
+    /// 배경 수집 작업.
+    pub jobs: Jobs,
+    /// 수집 문맥. 배경 작업에 넘긴다.
+    ctx: ProbeCtx,
     /// 두 자리 메뉴 번호 입력 버퍼("1" 다음 "4" → 14번).
     digits: String,
     pub status: Option<String>,
@@ -133,11 +149,14 @@ impl App {
             show_commands: false,
             header,
             inventory: detect::scan(),
-            sampler: Sampler::new(ctx),
+            sampler: Sampler::new(ctx.clone()),
             sort: ProcSort::Cpu,
             frozen: false,
             pinned: None,
             row_cursor: 0,
+            storage: StorageState::default(),
+            jobs: Jobs::new(),
+            ctx,
             digits: String::new(),
             status: None,
             quit: false,
@@ -224,6 +243,61 @@ impl App {
         }
     }
 
+    /// 화면이 요구하는 자료를 챙긴다. 느린 것은 배경 작업으로 넘긴다.
+    pub fn poll_collectors(&mut self) {
+        for output in self.jobs.drain() {
+            self.storage.apply(output);
+        }
+        if self.screen != Screen::Storage {
+            return;
+        }
+        if !self.storage.loaded {
+            self.storage.load_fast(&self.ctx);
+        }
+        let Some(task) = self.selected_task() else {
+            return;
+        };
+        for job in self.storage.jobs_for(task.id) {
+            self.jobs.request(job, &self.ctx);
+        }
+    }
+
+    /// 저장 공간 화면에서 선택된 디렉터리 항목.
+    pub fn selected_dir_entry(&self) -> Option<crate::collect::dirsize::Entry> {
+        self.storage
+            .dir
+            .as_ref()?
+            .entries
+            .get(self.row_cursor)
+            .cloned()
+    }
+
+    /// 디렉터리를 파고든다.
+    fn descend_directory(&mut self) {
+        let Some(entry) = self.selected_dir_entry() else {
+            return;
+        };
+        if !entry.is_dir {
+            self.status = Some(format!("{} is a file, not a directory", entry.name));
+            return;
+        }
+        self.row_cursor = 0;
+        self.storage
+            .descend(entry.path.clone(), &mut self.jobs, &self.ctx);
+    }
+
+    /// 디렉터리 한 단계 위로.
+    fn ascend_directory(&mut self) -> bool {
+        self.row_cursor = 0;
+        self.storage.ascend(&mut self.jobs, &self.ctx)
+    }
+
+    /// 저장 공간 화면에서 디렉터리를 파고드는 작업을 보고 있는가.
+    fn browsing_directories(&self) -> bool {
+        self.screen == Screen::Storage
+            && self.selected_task().map(|t| t.id) == Some("storage.what-fills")
+    }
+
     /// 정렬과 고정을 반영한 프로세스 목록.
     pub fn sorted_procs(&self) -> Vec<&ProcRow> {
         let mut rows: Vec<&ProcRow> = self.sampler.procs.iter().collect();
@@ -275,7 +349,16 @@ impl App {
     }
 
     fn move_row(&mut self, delta: isize) {
-        let n = self.sampler.procs.len() as isize;
+        // 표의 길이는 화면에 따라 다르다.
+        let n = match self.screen {
+            Screen::Storage => self
+                .storage
+                .dir
+                .as_ref()
+                .map(|d| d.entries.len())
+                .unwrap_or(0) as isize,
+            _ => self.sampler.procs.len() as isize,
+        };
         if n == 0 {
             self.row_cursor = 0;
             return;
@@ -348,12 +431,23 @@ impl App {
                 }
                 None => {}
             },
-            KeyCode::Char('J') if self.live_active() => self.move_row(1),
-            KeyCode::Char('K') if self.live_active() => self.move_row(-1),
+            KeyCode::Char('J') if self.live_active() || self.screen == Screen::Storage => {
+                self.move_row(1)
+            }
+            KeyCode::Char('K') if self.live_active() || self.screen == Screen::Storage => {
+                self.move_row(-1)
+            }
             KeyCode::Down | KeyCode::Up
-                if self.live_active() && key.modifiers.contains(KeyModifiers::SHIFT) =>
+                if (self.live_active() || self.screen == Screen::Storage)
+                    && key.modifiers.contains(KeyModifiers::SHIFT) =>
             {
                 self.move_row(if key.code == KeyCode::Down { 1 } else { -1 });
+            }
+            // ── 저장 공간 화면 전용 ───────────────────────────────
+            KeyCode::Char('r') if self.screen == Screen::Storage => {
+                self.storage.reset();
+                self.row_cursor = 0;
+                self.status = Some("re-reading storage state".into());
             }
             KeyCode::Char('t') => {
                 self.digits.clear();
@@ -392,10 +486,17 @@ impl App {
                     self.screen = self.selected_screen();
                     self.row_cursor = 0;
                     self.sync_sort_with_task();
+                } else if self.browsing_directories() {
+                    // 디렉터리를 파고든다.
+                    self.descend_directory();
                 }
             }
             KeyCode::Backspace => {
                 self.digits.clear();
+                // 디렉터리를 보고 있으면 한 단계 위로, 위가 없으면 홈으로.
+                if self.browsing_directories() && self.ascend_directory() {
+                    return;
+                }
                 self.screen = Screen::Home;
             }
             KeyCode::Char(ch) if ch.is_ascii_digit() => self.on_digit(ch),

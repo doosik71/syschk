@@ -110,12 +110,17 @@ fn commands_are_hidden_until_asked_for() {
     let mut term = terminal(120, 34);
     term.draw(|f| ui::draw(f, &app)).unwrap();
     let collapsed = common::rendered(&term);
-    assert!(collapsed.contains("press c to show them"));
+    // 근거 명령은 기본으로 접혀 있다.
+    assert!(collapsed.contains("press c to see what syschk reads"));
+    assert!(!collapsed.contains("/proc/self/mountinfo"));
 
     press(&mut app, KeyCode::Char('c'));
     term.draw(|f| ui::draw(f, &app)).unwrap();
     let expanded = common::rendered(&term);
-    assert!(expanded.contains("read-only"));
+    // 앱이 읽는 경로와, 사용자가 직접 쳐볼 수 있는 명령을 함께 보여준다.
+    assert!(expanded.contains("What syschk reads"));
+    assert!(expanded.contains("/proc/self/mountinfo"));
+    assert!(expanded.contains("Try it yourself"));
     assert!(expanded.contains("df -hT") || expanded.contains("df -i"));
 }
 
@@ -330,7 +335,13 @@ fn planned_tasks_say_so_instead_of_pretending() {
 #[test]
 #[ignore = "prints screens for visual inspection"]
 fn screenshot() {
-    for screen in [Screen::Home, Screen::Live, Screen::Slow, Screen::Tools] {
+    for screen in [
+        Screen::Home,
+        Screen::Live,
+        Screen::Slow,
+        Screen::Storage,
+        Screen::Tools,
+    ] {
         let mut app = warmed_app(screen);
         if screen == Screen::Live {
             press(&mut app, KeyCode::Down); // "Who is using the CPU right now"
@@ -338,6 +349,14 @@ fn screenshot() {
         if screen == Screen::Slow {
             press(&mut app, KeyCode::Down); // "Am I running out of CPU"
             press(&mut app, KeyCode::Char('c'));
+        }
+        if screen == Screen::Storage {
+            // 빠른 자료를 읽고, 디렉터리 측정 화면으로 옮겨 배경 작업을 기다린다.
+            app.poll_collectors();
+            press(&mut app, KeyCode::Down);
+            app.poll_collectors();
+            std::thread::sleep(std::time::Duration::from_millis(9000));
+            app.poll_collectors();
         }
         let mut term = terminal(150, 40);
         term.draw(|f| ui::draw(f, &app)).unwrap();

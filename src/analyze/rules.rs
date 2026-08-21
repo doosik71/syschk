@@ -89,3 +89,25 @@ pub const DISK_UTIL_WARN: f32 = 80.0;
 pub const DISK_AWAIT_WARN_MS: f32 = 20.0;
 /// CPU 가 저장장치를 기다린 비율.
 pub const IOWAIT_WARN: f32 = 15.0;
+
+// ── 저장 공간 ─────────────────────────────────────────────────────
+
+/// 파일시스템 사용률.
+pub const SPACE_WARN_PCT: f32 = 90.0;
+pub const SPACE_CRITICAL_PCT: f32 = 95.0;
+/// 남은 절대량이 이보다 적으면 경고한다.
+///
+/// 단독으로 쓰면 작은 파일시스템(`/boot/efi`, `/run/lock`)이 늘 걸린다. 그래서
+/// [`SPACE_TIGHT_PCT`] 이상 차 있을 때만 함께 적용한다.
+pub const SPACE_FREE_WARN_BYTES: u64 = 1024 * 1024 * 1024;
+/// 절대 여유량 규칙을 적용할 최소 사용률.
+pub const SPACE_TIGHT_PCT: f32 = 75.0;
+/// inode 사용률. 용량과 무관하게 파일 생성이 막힌다.
+pub const INODE_WARN_PCT: f32 = 85.0;
+pub const INODE_CRITICAL_PCT: f32 = 90.0;
+/// 지운 파일이 붙잡고 있는 양.
+pub const DELETED_HELD_WARN_BYTES: u64 = 1024 * 1024 * 1024;
+/// 로그가 파일시스템 사용량에서 차지하는 비중.
+pub const LOG_SHARE_WARN_PCT: f32 = 25.0;
+/// 로그 절대 크기.
+pub const LOG_SIZE_WARN_BYTES: u64 = 5 * 1024 * 1024 * 1024;

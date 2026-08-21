@@ -44,6 +44,7 @@ CI(`.github/workflows/ci.yml`)가 같은 순서로 검사하고, 릴리스 빌�
 | `tests/ui.rs` | 화면 렌더링, 키 조작, 좁은 터미널, 정렬·고정·정지 |
 | `tests/live_metrics.rs` | 두 시점 픽스처로 사용률·처리량·대기시간 계산 검증 |
 | `tests/bottleneck.rs` | 지표 조합 → 기대 판정 (병목 축 선택 규칙) |
+| `tests/storage.rs` | 마운트·장치·RAID 파싱, 디렉터리 측정, SMART 파싱, 공간 부족 원인 판정 |
 
 `tests/fixtures/` 는 `/proc`, `/etc` 를 흉내낸 트리다. `ProbeCtx::with_root` 로 루트를 바꿔
 실제 시스템과 무관하게 파서를 시험한다. 비율 지표는 두 시점이 필요하므로 `t0/`, `t1/`

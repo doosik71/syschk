@@ -1,0 +1,11 @@
+smartctl 7.4 2023-08-01 r5530 [x86_64-linux-6.8.0-138-generic] (local build)
+
+=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: FAILED!
+Drive failure expected in less than 24 hours. SAVE ALL DATA.
+
+ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE
+  5 Reallocated_Sector_Ct   0x0033   012   012   036    Pre-fail  Always   FAILING_NOW 1832
+  9 Power_On_Hours          0x0032   044   044   000    Old_age   Always       -       49122
+197 Current_Pending_Sector  0x0012   001   001   000    Old_age   Always       -       412
+199 UDMA_CRC_Error_Count    0x003e   200   200   000    Old_age   Always       -       17

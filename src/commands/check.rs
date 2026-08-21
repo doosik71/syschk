@@ -7,8 +7,9 @@
 //! * 3 — 점검 자체를 하지 못함
 
 use crate::analyze::Verdict;
+use crate::analyze::storage as storage_rules;
 use crate::app::sampler::Sampler;
-use crate::collect::ProbeCtx;
+use crate::collect::{ProbeCtx, mounts};
 use crate::tools::detect;
 use crate::util::fmt::duration_human;
 use std::time::Duration;
@@ -58,6 +59,39 @@ pub fn run() -> i32 {
         }
     }
 
+    // 저장 공간은 statvfs 만 쓰므로 비용이 거의 없다. 여기서 함께 본다.
+    let mount_usage = mounts::usage(&ctx);
+    let mut storage_findings = storage_rules::space_findings(&mount_usage);
+    storage_findings.extend(storage_rules::inode_findings(&mount_usage));
+    let storage_worst = storage_findings
+        .iter()
+        .map(|f| f.verdict)
+        .max()
+        .unwrap_or(Verdict::Ok);
+    println!("\nStorage");
+    let notable: Vec<_> = storage_findings
+        .iter()
+        .filter(|f| f.verdict >= Verdict::Warn)
+        .collect();
+    if notable.is_empty() {
+        println!(
+            "  ok       space    every filesystem has room and inodes to spare ({} checked)",
+            mount_usage.len()
+        );
+    } else {
+        for f in notable {
+            let mark = match f.verdict {
+                Verdict::Critical => "CRITICAL",
+                Verdict::Warn => "WARNING ",
+                _ => "ok      ",
+            };
+            println!("  {mark} {:<8} {}", f.axis, f.headline);
+            for e in &f.evidence {
+                println!("           {e}");
+            }
+        }
+    }
+
     let inventory = detect::scan();
     println!(
         "\ntools: {} installed, {} missing, {} not applicable",
@@ -69,7 +103,7 @@ pub fn run() -> i32 {
         println!("run 'syschk doctor' to see what the missing ones would give you");
     }
 
-    match assessment.worst() {
+    match assessment.worst().max(storage_worst) {
         Verdict::Critical => 2,
         Verdict::Warn => 1,
         _ => 0,
