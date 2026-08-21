@@ -41,10 +41,20 @@ CI(`.github/workflows/ci.yml`)가 같은 순서로 검사하고, 릴리스 빌�
 | `tests/registry.rs` | 작업·도구 레지스트리 정합성, UI 문구가 영어인지 |
 | `tests/search.rs` | 증상 표현으로 올바른 작업이 나오는지 |
 | `tests/probes.rs` | 픽스처로 파서 검증, 읽기 실패 시 정상 격하 |
-| `tests/ui.rs` | 화면 렌더링, 키 조작, 좁은 터미널 |
+| `tests/ui.rs` | 화면 렌더링, 키 조작, 좁은 터미널, 정렬·고정·정지 |
+| `tests/live_metrics.rs` | 두 시점 픽스처로 사용률·처리량·대기시간 계산 검증 |
+| `tests/bottleneck.rs` | 지표 조합 → 기대 판정 (병목 축 선택 규칙) |
 
 `tests/fixtures/` 는 `/proc`, `/etc` 를 흉내낸 트리다. `ProbeCtx::with_root` 로 루트를 바꿔
-실제 시스템과 무관하게 파서를 시험한다.
+실제 시스템과 무관하게 파서를 시험한다. 비율 지표는 두 시점이 필요하므로 `t0/`, `t1/`
+두 트리를 두고 간격을 인자로 넘긴다 — 시험이 타이밍에 흔들리지 않는다.
+
+기본 실행에서 빠지는 시험 두 개가 있다. 실제 시스템을 재는 것이라 결과가 환경에 따라 달라진다.
+
+```bash
+cargo test --test live_metrics -- --ignored --nocapture   # 표본 하나의 비용 측정
+cargo test --test ui -- --ignored --nocapture screenshot  # 화면을 텍스트로 덤프
+```
 
 ## 새 기능 추가하기
 
@@ -64,7 +74,18 @@ t!("storage.trim", Storage, "M2", Planned,
 ```
 
 메뉴 표시, 증상 검색, 필요 도구 역참조, `docs/screens.md` 표가 자동으로 따라온다.
-`uses` 에 적은 명령은 `cargo test` 가 읽기 전용 정책으로 검증한다.
+
+`uses` 는 **앱이 실제로 읽는 것**을, `learn` 은 **사용자가 직접 쳐볼 수 있는 동등한 명령**을 적는다.
+syschk 는 `/proc` 를 직접 읽는 경우가 많아 둘이 다르며, `learn` 이 사용자가 시스템 관리 명령을
+익히는 통로가 된다. 양쪽 모두 `cargo test` 가 읽기 전용 정책으로 검증한다.
+
+```rust
+t!("live.cpu", Live, "M1", Ready,
+    "Who is using the CPU right now", "...",
+    aka ["cpu", "busy"], needs [],
+    uses ["cat /proc/stat", "cat /proc/pressure/cpu"],
+    learn ["mpstat -P ALL 1 3", "pidstat -u 1 3"]),
+```
 
 ### 2. 새 도구 추가
 
@@ -103,6 +124,7 @@ tool!("hdparm", "hdparm", ["hdparm"], Storage, false,
 
 - 화면에 표시되는 문구는 영어. 문서와 코드 주석은 한국어(→ [screens.md](screens.md#표시-언어))
 - 사용자에게 보이는 문장은 비전문가 기준으로 쓴다. 전문 용어를 쓰면 한 줄 설명을 붙인다
-- 판정에는 항상 수치 근거를 함께 담는다
+- 판정에는 항상 수치 근거와, 그 지표가 무엇인지에 대한 한 줄 설명을 함께 담는다
+- 읽지 못한 값은 0 으로 꾸미지 않는다. "권한 없음"과 "0"은 다른 사실이다
 - 시스템을 변경하는 코드는 추가하지 않는다(→ [scope.md](scope.md))
 - `AGENTS.md` 의 커밋 메시지 규칙을 따른다

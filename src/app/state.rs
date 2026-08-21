@@ -3,12 +3,44 @@
 //! 상태 전이는 모두 이곳에 모여 있고, UI 는 상태를 읽어서 그리기만 한다.
 //! 덕분에 화면을 추가할 때 이벤트 루프를 건드릴 필요가 없다.
 
+use super::sampler::Sampler;
+use crate::collect::process::ProcRow;
 use crate::collect::{ProbeCtx, ProbeData};
 use crate::tasks::{MENU, Screen, Task, registry, search};
 use crate::tools::detect::{self, Inventory};
 use crate::tools::registry as tool_registry;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::collections::HashMap;
+use std::time::Instant;
+
+/// 프로세스 목록 정렬 기준.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProcSort {
+    Cpu,
+    Memory,
+    Io,
+    Pid,
+}
+
+impl ProcSort {
+    pub fn label(self) -> &'static str {
+        match self {
+            ProcSort::Cpu => "cpu",
+            ProcSort::Memory => "memory",
+            ProcSort::Io => "disk i/o",
+            ProcSort::Pid => "pid",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            ProcSort::Cpu => ProcSort::Memory,
+            ProcSort::Memory => ProcSort::Io,
+            ProcSort::Io => ProcSort::Pid,
+            ProcSort::Pid => ProcSort::Cpu,
+        }
+    }
+}
 
 /// 화면 위에 덮이는 창.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,6 +107,15 @@ pub struct App {
     pub show_commands: bool,
     pub header: Header,
     pub inventory: Inventory,
+    /// 실시간 지표 표본 추출기. 실시간 화면에서만 동작한다.
+    pub sampler: Sampler,
+    pub sort: ProcSort,
+    /// 화면 정지. 값을 자세히 보려고 멈춘 상태.
+    pub frozen: bool,
+    /// 고정 관찰 중인 프로세스.
+    pub pinned: Option<u32>,
+    /// 프로세스 표 안의 커서.
+    pub row_cursor: usize,
     /// 두 자리 메뉴 번호 입력 버퍼("1" 다음 "4" → 14번).
     digits: String,
     pub status: Option<String>,
@@ -84,13 +125,19 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let ctx = ProbeCtx::default();
+        let header = Header::collect(&ctx);
         Self {
             screen: Screen::Home,
             cursors: HashMap::new(),
             overlay: None,
             show_commands: false,
-            header: Header::collect(&ctx),
+            header,
             inventory: detect::scan(),
+            sampler: Sampler::new(ctx),
+            sort: ProcSort::Cpu,
+            frozen: false,
+            pinned: None,
+            row_cursor: 0,
             digits: String::new(),
             status: None,
             quit: false,
@@ -165,6 +212,78 @@ impl App {
         self.inventory.missing_for(&ids).len()
     }
 
+    /// 실시간 표본이 필요한 화면인가.
+    pub fn live_active(&self) -> bool {
+        matches!(self.screen, Screen::Live | Screen::Slow)
+    }
+
+    /// 필요하면 표본을 뜬다. 다른 화면에서는 아무 것도 읽지 않는다.
+    pub fn maybe_sample(&mut self) {
+        if self.live_active() && !self.frozen && self.sampler.due(Instant::now()) {
+            self.sampler.tick();
+        }
+    }
+
+    /// 정렬과 고정을 반영한 프로세스 목록.
+    pub fn sorted_procs(&self) -> Vec<&ProcRow> {
+        let mut rows: Vec<&ProcRow> = self.sampler.procs.iter().collect();
+        match self.sort {
+            ProcSort::Cpu => rows.sort_by(|a, b| {
+                b.cpu_pct
+                    .partial_cmp(&a.cpu_pct)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
+            ProcSort::Memory => rows.sort_by(|a, b| b.rss_kb.cmp(&a.rss_kb)),
+            ProcSort::Io => rows.sort_by(|a, b| {
+                b.io_bps()
+                    .partial_cmp(&a.io_bps())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }),
+            ProcSort::Pid => rows.sort_by(|a, b| a.pid.cmp(&b.pid)),
+        }
+        // 고정한 프로세스는 항상 맨 위에 둔다.
+        if let Some(pid) = self.pinned
+            && let Some(idx) = rows.iter().position(|p| p.pid == pid)
+        {
+            let row = rows.remove(idx);
+            rows.insert(0, row);
+        }
+        rows
+    }
+
+    /// 프로세스 표에서 커서가 가리키는 행.
+    pub fn selected_proc(&self) -> Option<ProcRow> {
+        self.sorted_procs()
+            .get(self.row_cursor)
+            .map(|p| (*p).clone())
+    }
+
+    /// Live 화면의 작업에 맞는 기본 정렬. 사용자가 `s` 로 언제든 바꿀 수 있다.
+    fn sync_sort_with_task(&mut self) {
+        if self.screen != Screen::Live {
+            return;
+        }
+        let Some(task) = self.selected_task() else {
+            return;
+        };
+        match task.id {
+            "live.cpu" => self.sort = ProcSort::Cpu,
+            "live.memory" => self.sort = ProcSort::Memory,
+            "live.disk-io" => self.sort = ProcSort::Io,
+            _ => {}
+        }
+    }
+
+    fn move_row(&mut self, delta: isize) {
+        let n = self.sampler.procs.len() as isize;
+        if n == 0 {
+            self.row_cursor = 0;
+            return;
+        }
+        let next = (self.row_cursor as isize + delta).rem_euclid(n);
+        self.row_cursor = next as usize;
+    }
+
     pub fn on_key(&mut self, key: KeyEvent) {
         if key.kind == KeyEventKind::Release {
             return;
@@ -199,6 +318,43 @@ impl App {
             KeyCode::Char('c') => {
                 self.show_commands = !self.show_commands;
             }
+            // ── 실시간 화면 전용 ──────────────────────────────────
+            KeyCode::Char('s') if self.live_active() => {
+                self.sort = self.sort.next();
+                self.row_cursor = 0;
+                self.status = Some(format!("sorted by {}", self.sort.label()));
+            }
+            KeyCode::Char('f') if self.live_active() => {
+                self.frozen = !self.frozen;
+                self.status = Some(
+                    if self.frozen {
+                        "frozen - values held still. press f to resume"
+                    } else {
+                        "live again"
+                    }
+                    .to_string(),
+                );
+            }
+            KeyCode::Char('p') if self.live_active() => match self.selected_proc() {
+                Some(row) if self.pinned == Some(row.pid) => {
+                    self.pinned = None;
+                    self.status = Some(format!("unpinned {}", row.pid));
+                }
+                Some(row) => {
+                    self.pinned = Some(row.pid);
+                    // 고정한 행은 맨 위로 올라가므로 커서도 따라간다.
+                    self.row_cursor = 0;
+                    self.status = Some(format!("pinned {} ({})", row.pid, row.user));
+                }
+                None => {}
+            },
+            KeyCode::Char('J') if self.live_active() => self.move_row(1),
+            KeyCode::Char('K') if self.live_active() => self.move_row(-1),
+            KeyCode::Down | KeyCode::Up
+                if self.live_active() && key.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                self.move_row(if key.code == KeyCode::Down { 1 } else { -1 });
+            }
             KeyCode::Char('t') => {
                 self.digits.clear();
                 self.screen = Screen::Tools;
@@ -206,10 +362,12 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.digits.clear();
                 self.move_cursor(-1);
+                self.sync_sort_with_task();
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.digits.clear();
                 self.move_cursor(1);
+                self.sync_sort_with_task();
             }
             KeyCode::PageUp => {
                 self.digits.clear();
@@ -232,6 +390,8 @@ impl App {
                 self.digits.clear();
                 if self.screen == Screen::Home {
                     self.screen = self.selected_screen();
+                    self.row_cursor = 0;
+                    self.sync_sort_with_task();
                 }
             }
             KeyCode::Backspace => {

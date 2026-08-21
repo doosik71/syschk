@@ -13,6 +13,7 @@
 //! 목적은 **정밀하지만 비파괴적인 진단**이다. 시스템을 바꾸는 명령은 실행하지 않으며,
 //! 이 원칙은 [`util::exec`] 의 읽기 전용 정책으로 강제된다.
 
+pub mod analyze;
 pub mod app;
 pub mod cli;
 pub mod collect;

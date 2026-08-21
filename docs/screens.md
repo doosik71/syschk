@@ -41,6 +41,66 @@ syschk 의 화면은 도구별 분류(로그 / 디스크 / 네트워크…)가 �
 - 각 작업 화면은 상단에 **판정 요약**, 중단에 **근거 자료**, 하단에 **다음에 해볼 일**을 배치한다. 이 3단 구성은 모든 화면에서 동일하다.
 - 근거 명령은 기본으로 접혀 있고 `c` 로 펼친다. 명령은 기억 대상이 아니라 근거다.
 
+
+## 실시간 관찰 화면 (1번)
+
+위쪽은 네 축의 현재 상태, 아래쪽은 선택한 항목에 따라 달라지는 상세다.
+
+```
+┌ cpu ───────────────────────────────┐┌ memory ───────────────────────────┐┌ disk ──────────────────────────────┐┌ network ──────────────────────────┐
+│█████░░░░░░░░░░░░░░░░░░░ 19%        ││█░░░░░░░░░░░░░░░░░░░░░░░ 4.6%      ││░░░░░░░░░░░░░░░░░░░░░░░░ 0.0%       ││enp37s0f1  1.3M/s                  │
+│user 16% sys 3.4% io 0.0%           ││23.2G used of 504G                 ││busiest nvme1n1  wait 0.0ms         ││in 17.5K/s                         │
+│load 7.25 / 32 cores = 0.23         ││cache 44.2G  swap 0B               ││idle  0 waiting                     ││out 1.3M/s  err 0 drop 122291      │
+│▂▃▂▁▂                               ││▁▁▁▁▁                              ││▁▁▁▁▁                               ││█▂▁▃▂                              │
+└────────────────────────────────────┘└───────────────────────────────────┘└────────────────────────────────────┘└───────────────────────────────────┘
+┌ 1. Right now ──────────────────────┐┌ Processes by CPU ────────────────────────────────────────────────────────────────────────────────────────────┐
+│   Show me everything at a glance   ││sorted by cpu (s to change, J/K to move, p to pin, f to freeze)                                               │
+│ › Who is using the CPU right now   ││      PID USER        CPU%   MEM%      RSS    READ/s   WRITE/s  COMMAND                                       │
+│   Who is using memory right now    ││> 149335 doosik     198.4    0.2     1.2G         0         0  /…/python train-model.py --device cuda:1        │
+│   Who is reading and writing the … ││    5827 xrdp       102.6    0.0    51.3M         -         -  /usr/sbin/xrdp                                 │
+│   Who is using the network right … ││       1 root         0.0    0.0    13.2M         -         -  /sbin/init splash                              │
+│   Is any program stuck and not re… ││                                                                                                              │
+│   Freeze the screen and look clos… ││Per-process I/O for other users needs privileges - shown as '-' rather than 0.                                │
+└────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ↑↓ view   J/K process   s sort   f freeze   p pin   c commands   esc back
+```
+
+`-` 와 `0` 은 다른 뜻이다. `0` 은 "읽었고 0 이었다", `-` 는 "권한이 없어 읽지 못했다"다.
+값을 0 으로 꾸미지 않는다(원칙: 모르는 것은 모른다고 말한다).
+
+## 병목 특정 화면 (2번)
+
+판정 → 근거 → 지표 설명 → 근거 명령의 순서로 배치한다. 마지막 두 절이 이 앱을 쓰면서
+지표와 명령을 익히게 하는 부분이다.
+
+```
+┌ 2. Why is it slow ─────────────────────────────────────────────────────────────────────────────────────┐
+│✔ ok        Nothing is saturated right now                                                              │
+│ cpu ✔ ok         memory ✔ ok         disk ✔ ok         network ✔ ok                                    │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Look at ───────────────────────────┐┌ Detail ──────────────────────────────────────────────────────────┐
+│   Just tell me what is making i…   ││✔ ok        CPU is not the bottleneck                             │
+│ › Am I running out of CPU          ││                                                                  │
+│   Am I running out of memory       ││Evidence                                                          │
+│   Is the disk too slow             ││  busy 23% (user 18%, system 4.7%), idle 77%                      │
+│   Is one program to blame          ││  load 6.40 across 32 cores = 0.20 per core (warn above 0.8)      │
+│   Was it always like this - com… M3││  pressure: work was delayed 0.0% of the last 10s                 │
+│   Is a container eating the res… M6││                                                                  │
+│                                    ││What these numbers mean                                           │
+│                                    ││  Load counts how many processes want to run. Divided by the core │
+│                                    ││  count it says whether the queue is longer than the machine can  │
+│                                    ││  serve; 'busy' says how much of the CPU was actually used.       │
+│                                    ││                                                                  │
+│                                    ││What syschk reads                                                 │
+│                                    ││  cat /proc/loadavg                                               │
+│                                    ││  cat /proc/stat                                                  │
+│                                    ││  cat /proc/pressure/cpu                                          │
+│                                    ││Try it yourself                                                   │
+│                                    ││  mpstat -P ALL 1 3                                               │
+│                                    ││  uptime                                                          │
+└────────────────────────────────────┘└──────────────────────────────────────────────────────────────────┘
+```
+
 ## 표시 언어
 
 화면에 표시되는 문구는 **영어**로 통일한다. 프로젝트 초기 단계에서 다국어 지원 비용을 감당하기에는 이르다는 판단이다.
@@ -55,6 +115,9 @@ syschk 의 화면은 도구별 분류(로그 / 디스크 / 네트워크…)가 �
 cargo run -- tasks --markdown   # 이 절 이하를 다시 생성한다
 ```
 
+`Status` 열의 `ready` 는 지금 동작하는 작업이고, `M3` 같은 값은 그 마일스톤에서 온다는 뜻이다.
+앱도 같은 표시를 보여주므로, 사용자는 무엇을 기대할 수 있는지 알 수 있다.
+
 <!-- generated by `syschk tasks --markdown` - do not edit by hand -->
 
 ### 1. See what the system is doing right now
@@ -63,13 +126,13 @@ Watch current activity and see which processes are behind it.
 
 | Menu item | What you get | Needs | Status |
 | --- | --- | --- | --- |
-| Show me everything at a glance | CPU, memory, disk, network and load side by side, each with a plain verdict | `procps` | M1 |
-| Who is using the CPU right now | Top processes by CPU, per-core spread, and the user/system/iowait split | `procps`, `sysstat` | M1 |
-| Who is using memory right now | Top processes by resident memory, cache versus real usage, and whether swap is in play | `procps` | M1 |
-| Who is reading and writing the disk right now | Per-process I/O and per-device queue depth and wait time | `sysstat`, `iotop` | M1 |
-| Who is using the network right now | Throughput per interface and the spread of connection states | `iproute2` | M1 |
-| Is any program stuck and not responding | Processes in uninterruptible wait, and what they are waiting on | `procps` | M1 |
-| Freeze the screen and look closer | Pause updates, re-sort, and pin one process to watch | - | M1 |
+| Show me everything at a glance | CPU, memory, disk, network and load side by side, each with a plain verdict | - | ready |
+| Who is using the CPU right now | Top processes by CPU, per-core spread, and the user/system/iowait split | - | ready |
+| Who is using memory right now | Top processes by resident memory, cache versus real usage, and whether swap is in play | - | ready |
+| Who is reading and writing the disk right now | Per-process I/O and per-device queue depth and wait time | - | ready |
+| Who is using the network right now | Throughput per interface, with error and drop counters | - | ready |
+| Is any program stuck and not responding | Processes in uninterruptible wait, and the kernel point they are waiting at | - | ready |
+| Freeze the screen and look closer | Pause updates, re-sort, and pin one process to keep watching | - | ready |
 
 ### 2. Something is slow - find out why
 
@@ -77,11 +140,11 @@ Narrow the slowdown to one axis: cpu, memory, disk or network.
 
 | Menu item | What you get | Needs | Status |
 | --- | --- | --- | --- |
-| Just tell me what is making it slow | One of cpu / memory / disk / network named as the bottleneck, with the numbers behind it | `procps`, `sysstat` | M1 |
-| Am I running out of CPU | Load against core count, run-queue length, steal time on virtual machines, and throttling | `procps`, `sysstat`, `linux-tools-common` | M1 |
-| Am I running out of memory | Free versus cache, swap trend, page reclaim pressure, and any past OOM kill | `procps` | M1 |
-| Is the disk too slow | Per-device latency, queue and utilisation, iowait share, and who is waiting | `sysstat` | M1 |
-| Is one program to blame | The heaviest consumers on each axis, with a jump into per-process detail | `procps` | M1 |
+| Just tell me what is making it slow | One of cpu / memory / disk / network named as the bottleneck, with the numbers behind it | - | ready |
+| Am I running out of CPU | Load against core count, run queue, and steal time on virtual machines | - | ready |
+| Am I running out of memory | Available versus cached memory, swap activity and reclaim pressure | - | ready |
+| Is the disk too slow | Per-device busy time and average wait, iowait share, and who is waiting | - | ready |
+| Is one program to blame | The heaviest consumers of cpu, memory and disk side by side | - | ready |
 | Was it always like this - compare with the past | The same figures over recent days, so 'slow' can be measured against normal | `sysstat` | M3 |
 | Is a container eating the resources | CPU, memory and I/O per container against its configured limit | `docker.io` | M6 |
 

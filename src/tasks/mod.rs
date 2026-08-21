@@ -187,6 +187,12 @@ pub struct Task {
     pub tools: &'static [&'static str],
     /// 이 작업이 사용하는 명령. 근거로 노출되며, 전부 읽기 전용이어야 한다.
     pub commands: &'static [&'static str],
+    /// 사용자가 직접 쳐볼 수 있는 동등한 명령.
+    ///
+    /// syschk 는 `/proc` 를 직접 읽는 경우가 많아 실제 실행 명령과 사람이 쓰는 명령이
+    /// 다르다. 이 목록은 "같은 것을 손으로 보려면 무엇을 치면 되는가"를 알려주며,
+    /// 앱을 쓰면서 시스템 관리 명령을 익히게 하는 통로다.
+    pub learn: &'static [&'static str],
     pub state: TaskState,
     /// 구현이 오는 마일스톤.
     pub milestone: &'static str,

@@ -1,53 +1,77 @@
 //! `syschk check` — 한 번 점검하고 요약을 출력한다. 스크립트·cron 용.
 //!
-//! 종료 코드: 0 = 확인된 문제 없음, 1 = 주의 항목 있음, 2 = 점검 자체를 못 함.
-//! M1 이후 각 축의 판정이 이 요약에 더해진다.
+//! 종료 코드
+//! * 0 — 확인된 문제 없음
+//! * 1 — 주의(warning) 항목 있음
+//! * 2 — 심각(critical) 항목 있음
+//! * 3 — 점검 자체를 하지 못함
 
-use crate::collect::{ProbeCtx, probes};
+use crate::analyze::Verdict;
+use crate::app::sampler::Sampler;
+use crate::collect::ProbeCtx;
 use crate::tools::detect;
+use crate::util::fmt::duration_human;
+use std::time::Duration;
 
 pub fn run() -> i32 {
     let ctx = ProbeCtx::default();
-    let mut failures = 0;
 
-    println!("syschk check (read-only)");
-    for probe in probes() {
-        let result = probe.run(&ctx);
-        if result.availability.is_ok() {
-            if let crate::collect::ProbeData::Fields(fields) = &result.data {
-                let rendered = fields
-                    .iter()
-                    .filter(|f| !f.value.is_empty())
-                    .map(|f| format!("{}={}", f.label, f.value))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                println!("  ok      {:<18} {rendered}", probe.id());
-            }
-        } else {
-            failures += 1;
-            println!(
-                "  skipped {:<18} {}",
-                probe.id(),
-                result.availability.message()
-            );
+    // 비율 지표는 두 표본이 필요하다. 1초를 기다린다.
+    let mut sampler = Sampler::new(ctx.clone());
+    sampler.tick();
+    std::thread::sleep(Duration::from_secs(1));
+    sampler.tick();
+
+    if sampler.warming_up() {
+        eprintln!("could not sample /proc - is this a Linux system?");
+        return 3;
+    }
+
+    let uptime = ctx
+        .read("/proc/uptime")
+        .and_then(|t| {
+            t.split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<f64>().ok())
+        })
+        .map(|s| duration_human(s as u64))
+        .unwrap_or_else(|| "unknown".into());
+    let host = ctx
+        .read("/proc/sys/kernel/hostname")
+        .map(|h| h.trim().to_string())
+        .unwrap_or_else(|| "unknown".into());
+
+    println!("syschk check (read-only)  host {host}  up {uptime}");
+
+    let assessment = sampler.assessment();
+    println!("\n{}", assessment.headline);
+    for f in &assessment.findings {
+        let mark = match f.verdict {
+            Verdict::Ok => "ok      ",
+            Verdict::Warn => "WARNING ",
+            Verdict::Critical => "CRITICAL",
+            Verdict::Unknown => "unknown ",
+        };
+        println!("  {mark} {:<8} {}", f.axis, f.headline);
+        for e in &f.evidence {
+            println!("           {e}");
         }
     }
 
     let inventory = detect::scan();
     println!(
-        "  tools   {} installed, {} missing, {} n/a",
+        "\ntools: {} installed, {} missing, {} not applicable",
         inventory.installed(),
         inventory.missing(),
         inventory.not_applicable()
     );
     if inventory.missing() > 0 {
-        println!("          run 'syschk doctor' to see what the missing ones would give you");
+        println!("run 'syschk doctor' to see what the missing ones would give you");
     }
 
-    println!(
-        "\nHealth verdicts per axis (cpu, memory, disk, network) arrive with the\n\
-         collectors in M1. What is above is what syschk can state today."
-    );
-
-    if failures > 0 { 1 } else { 0 }
+    match assessment.worst() {
+        Verdict::Critical => 2,
+        Verdict::Warn => 1,
+        _ => 0,
+    }
 }

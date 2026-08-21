@@ -16,10 +16,17 @@ pub fn run() -> Result<()> {
 fn event_loop(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut app = App::new();
     loop {
+        // 실시간 화면에서는 1초마다 표본을 뜬다. 다른 화면에서는 아무 것도 읽지 않는다.
+        app.maybe_sample();
         terminal.draw(|frame| crate::ui::draw(frame, &app))?;
 
-        // 입력을 기다린다. 타임아웃은 창 크기 변경 등에 대한 재그리기 여유.
-        if event::poll(Duration::from_millis(500))? {
+        // 실시간 화면이면 다음 표본 시각까지만 기다린다. 그 밖에는 입력만 기다린다.
+        let wait = if app.live_active() && !app.frozen {
+            Duration::from_millis(250)
+        } else {
+            Duration::from_millis(1000)
+        };
+        if event::poll(wait)? {
             match event::read()? {
                 Event::Key(key) => app.on_key(key),
                 Event::Resize(_, _) => {}

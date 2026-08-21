@@ -21,7 +21,8 @@ pub fn run() -> i32 {
     let mut checked = 0;
     let mut rejected = Vec::new();
     for task in registry::tasks() {
-        for cmd in task.commands {
+        // 앱이 실행하는 명령과, 사용자에게 "직접 해보라"고 제시하는 명령 모두 검증한다.
+        for cmd in task.commands.iter().chain(task.learn.iter()) {
             checked += 1;
             if let Err(e) = ReadOnlyCommand::parse(cmd) {
                 rejected.push(format!("{} :: {cmd} :: {e}", task.id));

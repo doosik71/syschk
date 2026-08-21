@@ -29,6 +29,19 @@ fn probes_parse_fixture_system() {
                 assert_eq!(result.data.field("load1"), Some("0.52"));
                 assert_eq!(result.data.field("cores"), Some("4"));
             }
+            // M1 수집기는 픽스처에서 값이 읽히는지만 확인한다(세부 검증은 live_metrics.rs).
+            "cpu.usage" => {
+                assert_eq!(result.data.field("cores"), Some("2"));
+                assert_eq!(result.data.field("blocked"), Some("1"));
+            }
+            "memory.usage" => {
+                assert_eq!(result.data.field("total_kb"), Some("16384000"));
+            }
+            "disk.io" | "network.io" => {}
+            "process.list" => {
+                assert_eq!(result.data.field("processes"), Some("2"));
+                assert_eq!(result.data.field("blocked"), Some("1"));
+            }
             other => panic!("unexpected probe id: {other}"),
         }
     }
@@ -43,6 +56,12 @@ fn missing_sources_degrade_gracefully() {
         match probe.id() {
             // identity 는 값이 없어도 "unknown" 으로 채워 계속 진행한다.
             "system.identity" => assert!(result.availability.is_ok()),
+            // 프로세스 목록은 디렉터리를 열 수 없다는 사실을 알린다.
+            "process.list" | "disk.io" | "network.io" => assert!(
+                matches!(result.availability, Availability::ParseFailed { .. }),
+                "probe {} should report why it could not read",
+                probe.id()
+            ),
             _ => assert!(
                 matches!(result.availability, Availability::ParseFailed { .. }),
                 "probe {} should report why it could not read, got {:?}",

@@ -19,7 +19,8 @@ src/
 ├── lib.rs               크레이트 루트(시험이 참조)
 ├── cli.rs               clap 정의: tui / doctor / tasks / check / policy
 ├── app/
-│   ├── state.rs         화면·커서·오버레이·검색 상태와 키 입력 처리
+│   ├── state.rs         화면·커서·오버레이·검색·정렬·고정 상태와 키 입력 처리
+│   ├── sampler.rs       실시간 표본 추출(이전 표본을 들고 비율을 계산)
 │   └── runtime.rs       이벤트 루프
 ├── tasks/
 │   ├── mod.rs           Screen, Task, TaskState
@@ -31,14 +32,23 @@ src/
 │   └── detect.rs        설치·해당 여부 탐지 (외부 명령 없이 PATH 확인)
 ├── collect/
 │   ├── mod.rs           Probe, ProbeResult, Availability, ProbeCtx
-│   └── system.rs        시스템 기본 정보 수집기
+│   ├── system.rs        호스트·커널·부팅 시간
+│   ├── cpu.rs           /proc/stat, /proc/loadavg
+│   ├── memory.rs        /proc/meminfo, /proc/vmstat
+│   ├── blockio.rs       /proc/diskstats
+│   ├── network.rs       /proc/net/dev
+│   ├── process.rs       /proc/<pid>/*  (명령줄·소유자 캐시 포함)
+│   └── pressure.rs      /proc/pressure/*  (PSI)
+├── analyze/
+│   ├── rules.rs         Verdict, Finding, 임계값 표
+│   └── bottleneck.rs    네 축 판정과 병목 선택
 ├── commands/            비대화형 서브커맨드 (doctor / tasks / check / policy)
 ├── ui/
 │   ├── mod.rs           레이아웃, 헤더, 푸터
 │   ├── theme.rs         색상·글리프, ASCII 폴백
 │   ├── widgets.rs       목록 스크롤, 배지, 키·값 줄
 │   ├── overlay.rs       도움말·검색 오버레이
-│   └── screens/         home, task_list, tools
+│   └── screens/         home, live, slow, task_list, tools
 └── util/
     ├── exec.rs          읽기 전용 명령 게이트 (안전 보장의 핵심)
     └── fmt.rs           표시용 서식
@@ -126,9 +136,27 @@ pub enum Availability {
 새 수집기가 새 프로그램을 쓰려면 허용 목록에 정책을 등록해야 한다. 등록하지 않으면 실행되지 않으므로,
 실수로 시스템을 바꾸는 명령이 들어갈 수 없다. `syschk policy` 로 정책과 카탈로그 검증 결과를 볼 수 있다.
 
+## 표본 추출
+
+CPU 사용률·처리량 같은 값은 누적 카운터의 **차이**로만 얻을 수 있다. `app/sampler.rs` 가
+이전 표본을 들고 있으면서 1.5초 간격으로 비율을 계산한다. 설계상 지켜야 할 점 세 가지.
+
+- **실시간 화면에서만 표본을 뜬다.** 다른 화면에서는 `/proc` 를 읽지 않으므로 유휴 부하가 0 이다.
+- **간격이 50ms 미만이면 비율을 계산하지 않는다.** 짧은 간격은 값을 크게 왜곡한다.
+- **바뀌지 않는 값은 캐시한다.** 명령줄과 소유자는 프로세스가 사는 동안 고정이므로 한 번만 읽고,
+  pid 재사용은 시작 시각으로 판별한다. 권한이 없어 못 읽은 I/O 통계는 다시 시도하지 않는다.
+
+`Probe` 는 점(point) 값과 근거 명령 노출을 담당하고, 비율 계산은 `Sampler` 가 담당한다.
+이 분리 덕분에 수집기는 상태를 갖지 않고, 시험은 두 시점 픽스처로 결정적으로 검증할 수 있다.
+
 ## 판정 규칙
 
-규칙은 코드에 흩뿌리지 않고 표로 관리한다(`analyze/rules.rs`). 판정에는 반드시 근거 문구가 붙는다.
+규칙은 코드에 흩뿌리지 않고 표로 관리한다(`analyze/rules.rs`). 판정에는 반드시 근거 문구와
+**그 지표가 무엇인지에 대한 한 줄 설명**이 붙는다. 설명은 사용자가 쓰면서 지표를 익히게 하는 통로다.
+
+병목 축은 압박 지표(PSI)를 1순위 근거로 고른다. 사용률은 축 사이 비교가 어렵지만, PSI 는
+"일이 실제로 지연된 시간의 비율"이므로 CPU·메모리·I/O 를 같은 잣대로 비교할 수 있다.
+커널이 PSI 를 제공하지 않으면 사용률·대기시간으로 대체하고, 그 사실을 근거 문구에 남긴다.
 
 | 지표 | 조건 | 판정 | 근거 문구 |
 | --- | --- | --- | --- |
@@ -158,6 +186,6 @@ pub enum Availability {
 | CLI | `clap` (derive) | M0 |
 | 오류 처리 | `anyhow` | M0 |
 | 직렬화 | `serde`, `serde_json` | M7 (보고서) |
-| 비동기 | `tokio` | 느린 수집기가 등장하는 M2 |
+| 비동기 | `tokio` | 느린 수집기가 등장하는 M2. M1 의 `/proc` 읽기는 표본당 16ms 로 끝나 필요하지 않았다 |
 
 의존성은 필요한 마일스톤에서 추가한다. M0 은 세 개뿐이며, 그만큼 빌드가 빠르고 공격 표면이 작다.

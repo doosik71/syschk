@@ -6,6 +6,12 @@
 //! 수집 실패는 예외가 아니라 [`Availability`] 의 한 상태다. 도구가 없거나 권한이 없거나
 //! 값이 신뢰할 수 없어도 앱은 계속 동작하고, 그 사실을 사용자에게 그대로 알린다.
 
+pub mod blockio;
+pub mod cpu;
+pub mod memory;
+pub mod network;
+pub mod pressure;
+pub mod process;
 pub mod system;
 
 use crate::util::exec::CommandOutput;
@@ -180,6 +186,11 @@ pub fn probes() -> Vec<Box<dyn Probe>> {
         Box::new(system::Identity),
         Box::new(system::Uptime),
         Box::new(system::LoadAverage),
+        Box::new(cpu::CpuProbe),
+        Box::new(memory::MemoryProbe),
+        Box::new(blockio::DiskIoProbe),
+        Box::new(network::NetworkProbe),
+        Box::new(process::ProcessProbe),
     ]
 }
 

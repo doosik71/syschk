@@ -1,0 +1,7 @@
+cpu  1100 0 550 8300 150 0 0 0 0 0
+cpu0 550 0 275 4150 75 0 0 0 0 0
+cpu1 550 0 275 4150 75 0 0 0 0 0
+intr 22345
+ctxt 150000
+procs_running 4
+procs_blocked 1

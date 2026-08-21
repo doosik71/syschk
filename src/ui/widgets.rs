@@ -30,6 +30,11 @@ pub fn scroll_list(
     frame.render_widget(Paragraph::new(visible).block(block), area);
 }
 
+/// 표처럼 줄바꿈 없이 그린다. 넘치는 부분은 잘린다.
+pub fn table(frame: &mut Frame, area: Rect, block: Block<'_>, lines: Vec<Line<'static>>) {
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
 /// 여러 줄 상세 내용을 그린다.
 pub fn detail(frame: &mut Frame, area: Rect, block: Block<'_>, lines: Vec<Line<'static>>) {
     frame.render_widget(
@@ -94,4 +99,61 @@ pub fn section(title: &str, th: Theme) -> Line<'static> {
 
 pub fn blank() -> Line<'static> {
     Line::from("")
+}
+
+/// 막대 게이지. 값과 임계 색을 함께 보여준다.
+pub fn gauge(value_pct: f32, width: usize, th: Theme) -> Span<'static> {
+    let width = width.max(4);
+    let filled = ((value_pct / 100.0) * width as f32)
+        .round()
+        .clamp(0.0, width as f32) as usize;
+    let (full, empty) = if th.glyphs.ok == "✔" {
+        ('█', '░')
+    } else {
+        ('#', '.')
+    };
+    let bar: String = std::iter::repeat_n(full, filled)
+        .chain(std::iter::repeat_n(empty, width - filled))
+        .collect();
+    let style = if value_pct >= 90.0 {
+        th.bad()
+    } else if value_pct >= 70.0 {
+        th.warn()
+    } else {
+        th.ok()
+    };
+    Span::styled(bar, style)
+}
+
+/// 추세를 한 줄로 그린다. 유니코드가 안 되면 ASCII 로 떨어진다.
+pub fn sparkline(values: &[f32], max: f32, width: usize, th: Theme) -> Span<'static> {
+    if values.is_empty() || width == 0 {
+        return Span::styled(" ".repeat(width), th.dim());
+    }
+    let levels: &[char] = if th.glyphs.ok == "✔" {
+        &['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']
+    } else {
+        &['_', '.', '.', ':', ':', '|', '|', '|']
+    };
+    let max = max.max(f32::EPSILON);
+    let start = values.len().saturating_sub(width);
+    let mut out = String::new();
+    for v in &values[start..] {
+        let idx = ((v / max) * (levels.len() - 1) as f32).round();
+        let idx = idx.clamp(0.0, (levels.len() - 1) as f32) as usize;
+        out.push(levels[idx]);
+    }
+    Span::styled(out, th.accent())
+}
+
+/// 판정 배지.
+pub fn verdict_badge(v: crate::analyze::Verdict, th: Theme) -> Span<'static> {
+    use crate::analyze::Verdict;
+    let g = th.glyphs;
+    match v {
+        Verdict::Ok => Span::styled(format!("{} ok      ", g.ok), th.ok()),
+        Verdict::Warn => Span::styled(format!("{} warning ", g.warn), th.warn()),
+        Verdict::Critical => Span::styled(format!("{} critical", g.missing), th.bad()),
+        Verdict::Unknown => Span::styled(format!("{} measuring", g.na), th.dim()),
+    }
 }

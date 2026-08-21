@@ -53,6 +53,7 @@ syschk 는 그 번역과 해석을 대신한다. 사용자는 증상을 고르�
 cargo build --release
 ./target/release/syschk            # TUI
 ./target/release/syschk doctor     # 진단 도구가 갖춰졌는지 점검
+./target/release/syschk check      # 지금 병목이 있는지 한 번 판정 (종료 코드로 알림)
 ./target/release/syschk policy     # 이 앱이 실행할 수 있는 명령 전체 확인
 ```
 
@@ -91,9 +92,13 @@ cargo build --release
 
 | 마일스톤 | 상태 | 내용 |
 | --- | --- | --- |
-| M0 골격 | ✅ 완료 | 계층 계약, 작업 90여 개·도구 55개 레지스트리, 홈 메뉴 14화면, 증상 검색, 도구 준비 화면, `doctor`/`tasks`/`check`/`policy`, 시험 31개와 CI |
-| M1 실시간 관찰 + 병목 특정 | 진행 | 화면 1·2 |
-| M2~M8 | 예정 | [docs/roadmap.md](docs/roadmap.md) |
+| M0 골격 | ✅ 완료 | 계층 계약, 작업 90여 개·도구 55개 레지스트리, 홈 메뉴 14화면, 증상 검색, 도구 준비 화면, `doctor`/`tasks`/`check`/`policy` |
+| M1 실시간 관찰 + 병목 특정 | ✅ 완료 | 화면 1·2 — CPU·메모리·디스크·네트워크·프로세스 실시간 관찰, 병목 축 판정과 근거, 정렬·고정·정지 |
+| M2 저장 공간·저장장치 | 다음 | 화면 4 |
+| M3~M8 | 예정 | [docs/roadmap.md](docs/roadmap.md) |
+
+지금 동작하는 것은 `cargo run -- tasks` 로 확인할 수 있다(작업마다 `ready` 또는 도착 예정 마일스톤 표시).
+시험 61개와 CI(fmt · clippy · test · 읽기 전용 정책 검증 · 릴리스 빌드)로 지킨다.
 
 메뉴에는 아직 구현되지 않은 작업도 표시되며, `planned M3` 처럼 어느 마일스톤에서 오는지 함께 보인다.
 무엇을 기대할 수 있는지 사용자가 알 수 있어야 하기 때문이다.
